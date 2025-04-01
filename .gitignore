@@ -1,12 +1,35 @@
-.venv/
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.log
-.DS_Store
-.idea/
-*.iml
-.vscode/
-.env
-config.json
+*.py[cod]
+*$py.class
 
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local configuration
+config/local_config.json
+
+# Historical data
+data/historical/*.csv
+
+# Logs
+*.log
+
+# MT5 credentials
+*.mt5cred
