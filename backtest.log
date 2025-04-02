@@ -32,3 +32,12 @@
 2025-04-02 08:33:51,793 - risk.manager - INFO - Risk Manager geïnitialiseerd: kapitaal=10000, max dagelijks verlies=500.0, max totaal verlies=1000.0
 2025-04-02 08:33:52,146 - __main__ - ERROR - Fout bij plotten van resultaten: 'Portfolio' object has no attribute 'equity'
 2025-04-02 08:33:52,146 - data.sources - INFO - MT5 connectie afgesloten
+2025-04-02 09:58:55,930 - __main__ - INFO - Backtesting EURUSD op H1 van 2021-04-01 00:00:00 tot 2025-04-01 00:00:00
+2025-04-02 09:58:55,930 - data.sources - INFO - Proberen data uit cache te laden voor EURUSD (H1)
+2025-04-02 09:58:59,259 - data.cache - INFO - Data uit cache geladen: C:\Users\Gebruiker\PycharmProjects\Sophy3\cached_data\forex\EURUSD\H1_v1.parquet (1000 bars)
+2025-04-02 09:58:59,259 - __main__ - INFO - Data ontvangen: 1000 bars van 2024-11-07 17:00:00 tot 2025-01-08 08:00:00
+2025-04-02 09:58:59,275 - __main__ - INFO - Backtest starten met strategie parameters: {'ema_periods': [20, 50, 200], 'rsi_period': 14, 'rsi_oversold': 30, 'rsi_overbought': 70, 'volatility_factor': 0.5, 'risk_per_trade': 0.01}
+2025-04-02 09:58:59,275 - __main__ - INFO - Risk parameters: {'max_daily_loss': 0.05, 'max_total_loss': 0.1, 'profit_target': 0.1, 'min_trading_days': 4, 'risk_per_trade': 0.01}
+2025-04-02 09:59:03,457 - risk.manager - INFO - Risk Manager geïnitialiseerd: kapitaal=10000, max dagelijks verlies=500.0, max totaal verlies=1000.0
+2025-04-02 09:59:03,678 - __main__ - ERROR - Fout bij plotten van resultaten: 'Portfolio' object has no attribute 'equity'
+2025-04-02 09:59:03,678 - data.sources - INFO - MT5 connectie afgesloten
