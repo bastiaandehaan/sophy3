@@ -1,17 +1,20 @@
+# path from content root [data/sources.py]
 """
 Sophy3 - Data Sources
-Functie: Data toegang & voorbereiding met fallbacks (CSV → MT5 → Mock)
+Functie: Data toegang & voorbereiding met fallbacks (Cache → CSV → MT5 → Mock)
 Auteur: AI Trading Assistant
-Laatste update: 2025-04-01
+Laatste update: 2025-04-02
 
 Gebruik:
   Deze module verzorgt data toegang vanuit verschillende bronnen met fallback mechanismen.
-  Primair via CSV, met fallback naar MT5 en mock data.
+  Primair via Cache, met fallback naar CSV, MT5 en mock data.
 
 Dependencies:
   - pandas
   - numpy
   - MetaTrader5
+  - pyarrow
+  - fastparquet
 """
 
 import os
@@ -96,9 +99,10 @@ def get_mt5_timeframe(timeframe_str):
         return None
 
     timeframes = {'M1': mt5.TIMEFRAME_M1, 'M5': mt5.TIMEFRAME_M5,
-        'M15': mt5.TIMEFRAME_M15, 'M30': mt5.TIMEFRAME_M30, 'H1': mt5.TIMEFRAME_H1,
-        'H4': mt5.TIMEFRAME_H4, 'D1': mt5.TIMEFRAME_D1, 'W1': mt5.TIMEFRAME_W1,
-        'MN1': mt5.TIMEFRAME_MN1}
+                  'M15': mt5.TIMEFRAME_M15, 'M30': mt5.TIMEFRAME_M30,
+                  'H1': mt5.TIMEFRAME_H1, 'H4': mt5.TIMEFRAME_H4,
+                  'D1': mt5.TIMEFRAME_D1, 'W1': mt5.TIMEFRAME_W1,
+                  'MN1': mt5.TIMEFRAME_MN1}
 
     return timeframes.get(timeframe_str.upper())
 
@@ -158,7 +162,7 @@ def get_data_from_mt5(symbol, timeframe, start_date=None, num_bars=1000):
 
     # Hernoem kolommen naar standaard formaat
     df.rename(columns={'open': 'open', 'high': 'high', 'low': 'low', 'close': 'close',
-        'tick_volume': 'volume'}, inplace=True)
+                       'tick_volume': 'volume'}, inplace=True)
 
     logger.info(f"Data opgehaald voor {symbol} ({timeframe}): {len(df)} bars")
     return df
@@ -285,24 +289,25 @@ def generate_mock_data(symbol, timeframe, num_bars=1000):
     # Open, high, low op basis van close
     open_prices = close * (1 + np.random.normal(0, volatility / 2, num_bars))
     high = np.maximum(close, open_prices) * (
-                1 + np.abs(np.random.normal(0, volatility, num_bars)))
+            1 + np.abs(np.random.normal(0, volatility, num_bars)))
     low = np.minimum(close, open_prices) * (
-                1 - np.abs(np.random.normal(0, volatility, num_bars)))
+            1 - np.abs(np.random.normal(0, volatility, num_bars)))
 
     # Volume
     volume = np.random.lognormal(10, 1, num_bars)
 
     # Maak DataFrame
     df = pd.DataFrame({'open': open_prices, 'high': high, 'low': low, 'close': close,
-        'volume': volume}, index=dates)
+                       'volume': volume}, index=dates)
 
     logger.info(f"Mock data gegenereerd voor {symbol} ({timeframe}): {len(df)} bars")
     return df
 
 
-def get_data(symbol, timeframe, start_date=None, num_bars=1000, csv_dir="./data/csv"):
+def get_data(symbol, timeframe, start_date=None, num_bars=1000, csv_dir="./data/csv",
+             use_cache=True, refresh_cache=False):
     """
-    Centrale functie voor data ophalen met fallback mechanismen.
+    Centrale functie voor data ophalen met cache en fallback mechanismen.
 
     Parameters:
     -----------
@@ -316,24 +321,50 @@ def get_data(symbol, timeframe, start_date=None, num_bars=1000, csv_dir="./data/
         Aantal bars om op te halen
     csv_dir : str, optional
         Directory met CSV bestanden voor fallback
+    use_cache : bool, optional
+        Of caching gebruikt moet worden (True voor snellere backtests)
+    refresh_cache : bool, optional
+        Forceer het verversen van de cache
 
     Returns:
     --------
     pandas.DataFrame
         DataFrame met OHLCV data
     """
-    # Poging 1: CSV (eerst proberen)
-    logger.info(f"Proberen CSV-data op te halen voor {symbol} ({timeframe})")
-    df = get_data_from_csv(symbol, timeframe, csv_dir)
+    # Import cache module (hier om circulaire imports te voorkomen)
+    from data.cache import load_from_cache, save_to_cache
 
-    # Poging 2: MT5 (als CSV niet werkt)
-    if df is None:
-        logger.info(f"Fallback naar MT5-data voor {symbol} ({timeframe})")
+    # Bepaal einde van de periode
+    end_date = datetime.now()
+
+    # Stap 1: Probeer data uit cache te halen
+    if use_cache and not refresh_cache:
+        logger.info(f"Proberen data uit cache te laden voor {symbol} ({timeframe})")
+        df = load_from_cache(symbol, timeframe, start_date=start_date,
+                             end_date=end_date)
+        if df is not None and len(df) > 0:
+            return df
+
+    # Stap 2: Probeer data van MT5 te halen en te cachen
+    if MT5_AVAILABLE:
+        logger.info(f"Ophalen van MT5 data voor {symbol} ({timeframe})")
         df = get_data_from_mt5(symbol, timeframe, start_date, num_bars)
+        if df is not None and len(df) > 0:
+            # Cache de data indien succesvol opgehaald
+            if use_cache:
+                save_to_cache(df, symbol, timeframe)
+            return df
 
-    # Poging 3: Mock data (als laatste resort)
-    if df is None:
-        logger.warning(f"Fallback naar mock data voor {symbol} ({timeframe})")
-        df = generate_mock_data(symbol, timeframe, num_bars)
+    # Stap 3: Fallback naar CSV data
+    logger.info(f"Fallback naar CSV data voor {symbol} ({timeframe})")
+    df = get_data_from_csv(symbol, timeframe, csv_dir)
+    if df is not None and len(df) > 0:
+        # Cache de CSV data indien gebruik is gevraagd
+        if use_cache:
+            save_to_cache(df, symbol, timeframe)
+        return df
 
+    # Stap 4: Laatste fallback naar mock data
+    logger.warning(f"Fallback naar mock data voor {symbol} ({timeframe})")
+    df = generate_mock_data(symbol, timeframe, num_bars)
     return df
