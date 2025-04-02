@@ -2,7 +2,7 @@
 Sophy3 - Backtest Script
 Functie: Vectorized backtesting met performance metrics
 Auteur: AI Trading Assistant
-Laatste update: 2025-04-01
+Laatste update: 2025-04-02
 
 Gebruik:
   python scripts/backtest.py --symbol EURUSD --timeframe H1 --capital 10000 --risk 0.01 --detailed
@@ -234,8 +234,8 @@ def run_backtest(
     logger.info(f"Backtest starten met strategie parameters: {strategy_params}")
     logger.info(f"Risk parameters: {risk_params}")
 
-    print(f"\n[⏱️] Backtest gestart om {datetime.now().strftime('%H:%M:%S')}")
-    print(f"[⚙️] Genereren van signalen voor {len(df)} bars...", end="", flush=True)
+    print(f"\nBacktest gestart om {datetime.now().strftime('%H:%M:%S')}")
+    print(f"Genereren van signalen voor {len(df)} bars...", end="", flush=True)
 
     # Genereer entry/exit signalen
     t0 = time.time()
@@ -251,24 +251,44 @@ def run_backtest(
     t1 = time.time()
     print(f" Voltooid in {t1-t0:.2f} seconden")
 
-    print(f"[💹] Uitvoeren van portfolio simulatie... ", end="", flush=True)
+    print(f"Uitvoeren van portfolio simulatie... ", end="", flush=True)
 
     # VectorBT portfolio simulatie
     try:
         t0 = time.time()
+        # Converteer timeframe naar pandas compatibel formaat
+        freq = None
+        if isinstance(df.index, pd.DatetimeIndex):
+            if df.index.freq is not None:
+                freq = df.index.freq
+            else:
+                # Handmatige berekening van frequentie obv eerste paar waarden
+                if len(df) > 1:
+                    diff = df.index[1] - df.index[0]
+                    if diff.seconds == 300:  # 5 min
+                        freq = "5min"
+                    elif diff.seconds == 900:  # 15 min
+                        freq = "15min"
+                    elif diff.seconds == 3600:  # 1 uur
+                        freq = "1h"
+                    elif diff.seconds == 14400:  # 4 uur
+                        freq = "4h"
+                    elif diff.days == 1:  # 1 dag
+                        freq = "1d"
+
         portfolio = vbt.Portfolio.from_signals(
             df.close,
             entries=entry_signals,
             exits=exit_signals,
             init_cash=initial_capital,
             fees=0.0001,  # 1 pip commissie/spread
-            freq=df.index.inferred_freq,
+            freq=freq,
         )
         t1 = time.time()
         print(f"Voltooid in {t1-t0:.2f} seconden")
     except Exception as e:
         logger.error(f"Fout bij portfolio simulatie: {str(e)}")
-        print(f"\n[❌] Fout bij portfolio simulatie: {str(e)}")
+        print(f"\nFout bij portfolio simulatie: {str(e)}")
         return None, None
 
     # Extracteer trade informatie
@@ -290,10 +310,14 @@ def run_backtest(
     try:
         max_drawdown = portfolio.max_drawdown()
     except:
-        # Handmatige berekening als fallback
-        equity = portfolio.equity()
-        max_dd = (equity / equity.cummax() - 1).min()
-        max_drawdown = max_dd if not np.isnan(max_dd) else 0
+        try:
+            # Probeer via value() methode
+            value_series = portfolio.value()
+            max_dd = (value_series / value_series.cummax() - 1).min()
+            max_drawdown = max_dd if not np.isnan(max_dd) else 0
+        except:
+            # Als dat niet lukt, probeer direct via total_return
+            max_drawdown = 0
 
     # Bereken win rate en profit factor handmatig
     if hasattr(trades, "to_pandas"):
@@ -395,7 +419,7 @@ def run_backtest(
     elapsed_time = time.time() - start_time
     print("\n" + "=" * 50)
     print(
-        f"[⏱️] Backtest voltooid in {elapsed_time:.2f} seconden ({elapsed_time/60:.2f} minuten)"
+        f"Backtest voltooid in {elapsed_time:.2f} seconden ({elapsed_time/60:.2f} minuten)"
     )
     print("=" * 50)
 
@@ -441,8 +465,8 @@ def optimize_parameters(
     )
     start_time = time.time()
 
-    print(f"\n[🔍] Parameteroptimalisatie gestart voor {param_to_optimize}")
-    print(f"[📊] Optimalisatie metric: {optimization_metric}")
+    print(f"\nParameteroptimalisatie gestart voor {param_to_optimize}")
+    print(f"Optimalisatie metric: {optimization_metric}")
 
     optimization_results = []
 
@@ -462,7 +486,7 @@ def optimize_parameters(
             if ema1 < ema2 and ema2 < ema3
         )
 
-        print(f"\n[⚙️] Testen van {total_combinations} EMA combinaties...")
+        print(f"\nTesten van {total_combinations} EMA combinaties...")
 
         # Maak een tqdm progress bar
         progress_bar = tqdm(
@@ -492,6 +516,26 @@ def optimize_parameters(
                                 volatility_factor=test_params["volatility_factor"],
                             )
 
+                            # Converteer timeframe naar pandas compatibel formaat
+                            freq = None
+                            if isinstance(df.index, pd.DatetimeIndex):
+                                if df.index.freq is not None:
+                                    freq = df.index.freq
+                                else:
+                                    # Handmatige berekening van frequentie
+                                    if len(df) > 1:
+                                        diff = df.index[1] - df.index[0]
+                                        if diff.seconds == 300:  # 5 min
+                                            freq = "5min"
+                                        elif diff.seconds == 900:  # 15 min
+                                            freq = "15min"
+                                        elif diff.seconds == 3600:  # 1 uur
+                                            freq = "1h"
+                                        elif diff.seconds == 14400:  # 4 uur
+                                            freq = "4h"
+                                        elif diff.days == 1:  # 1 dag
+                                            freq = "1d"
+
                             # Simuleer portfolio
                             portfolio = vbt.Portfolio.from_signals(
                                 df.close,
@@ -499,6 +543,7 @@ def optimize_parameters(
                                 exits=exit_signals,
                                 init_cash=initial_capital,
                                 fees=0.0001,
+                                freq=freq
                             )
 
                             # Bereken metrics
@@ -509,18 +554,28 @@ def optimize_parameters(
                             except:
                                 # Fallback voor andere VectorBT versies
                                 returns = portfolio.returns()
-                                equity = portfolio.equity()
+                                try:
+                                    # Gebruik value() in plaats van equity
+                                    equity_curve = portfolio.value()
 
-                                total_return = (
-                                    equity.iloc[-1] - equity.iloc[0]
-                                ) / equity.iloc[0]
-                                sharpe_ratio = (
-                                    returns.mean() / returns.std() * np.sqrt(252)
-                                    if returns.std() != 0
-                                    else 0
-                                )
-                                max_dd = (equity / equity.cummax() - 1).min()
-                                max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                                    total_return = (equity_curve.iloc[-1] - equity_curve.iloc[0]) / equity_curve.iloc[0]
+                                    sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                                    max_dd = (equity_curve / equity_curve.cummax() - 1).min()
+                                    max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                                except:
+                                    # Als value() niet werkt, probeer dan final_value()
+                                    try:
+                                        init_value = portfolio.init_cash
+                                        final_value = portfolio.final_value()
+
+                                        total_return = (final_value - init_value) / init_value
+                                        sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                                        max_drawdown = 0  # Kan niet berekenen zonder curve
+                                    except:
+                                        # Als nog steeds niet lukt, gebruik standaardwaarden
+                                        total_return = 0
+                                        sharpe_ratio = 0
+                                        max_drawdown = 0
 
                             # Bereken win rate en profit factor
                             trades = portfolio.trades.records
@@ -578,7 +633,7 @@ def optimize_parameters(
             if oversold < overbought
         )
 
-        print(f"\n[⚙️] Testen van {total_combinations} RSI combinaties...")
+        print(f"\nTesten van {total_combinations} RSI combinaties...")
 
         # Maak een tqdm progress bar
         progress_bar = tqdm(
@@ -608,6 +663,26 @@ def optimize_parameters(
                                 volatility_factor=test_params["volatility_factor"],
                             )
 
+                            # Converteer timeframe naar pandas compatibel formaat
+                            freq = None
+                            if isinstance(df.index, pd.DatetimeIndex):
+                                if df.index.freq is not None:
+                                    freq = df.index.freq
+                                else:
+                                    # Handmatige berekening van frequentie
+                                    if len(df) > 1:
+                                        diff = df.index[1] - df.index[0]
+                                        if diff.seconds == 300:  # 5 min
+                                            freq = "5min"
+                                        elif diff.seconds == 900:  # 15 min
+                                            freq = "15min"
+                                        elif diff.seconds == 3600:  # 1 uur
+                                            freq = "1h"
+                                        elif diff.seconds == 14400:  # 4 uur
+                                            freq = "4h"
+                                        elif diff.days == 1:  # 1 dag
+                                            freq = "1d"
+
                             # Simuleer portfolio
                             portfolio = vbt.Portfolio.from_signals(
                                 df.close,
@@ -615,6 +690,7 @@ def optimize_parameters(
                                 exits=exit_signals,
                                 init_cash=initial_capital,
                                 fees=0.0001,
+                                freq=freq
                             )
 
                             # Bereken metrics
@@ -625,18 +701,28 @@ def optimize_parameters(
                             except:
                                 # Fallback voor andere VectorBT versies
                                 returns = portfolio.returns()
-                                equity = portfolio.equity()
+                                try:
+                                    # Gebruik value() in plaats van equity
+                                    equity_curve = portfolio.value()
 
-                                total_return = (
-                                    equity.iloc[-1] - equity.iloc[0]
-                                ) / equity.iloc[0]
-                                sharpe_ratio = (
-                                    returns.mean() / returns.std() * np.sqrt(252)
-                                    if returns.std() != 0
-                                    else 0
-                                )
-                                max_dd = (equity / equity.cummax() - 1).min()
-                                max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                                    total_return = (equity_curve.iloc[-1] - equity_curve.iloc[0]) / equity_curve.iloc[0]
+                                    sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                                    max_dd = (equity_curve / equity_curve.cummax() - 1).min()
+                                    max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                                except:
+                                    # Als value() niet werkt, probeer dan final_value()
+                                    try:
+                                        init_value = portfolio.init_cash
+                                        final_value = portfolio.final_value()
+
+                                        total_return = (final_value - init_value) / init_value
+                                        sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                                        max_drawdown = 0  # Kan niet berekenen zonder curve
+                                    except:
+                                        # Als nog steeds niet lukt, gebruik standaardwaarden
+                                        total_return = 0
+                                        sharpe_ratio = 0
+                                        max_drawdown = 0
 
                             # Bereken win rate
                             trades = portfolio.trades.records
@@ -683,7 +769,7 @@ def optimize_parameters(
         # Volatiliteitsfactor optimaliseren
         volatility_factors = [0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
-        print(f"\n[⚙️] Testen van {len(volatility_factors)} volatiliteitsfactoren...")
+        print(f"\nTesten van {len(volatility_factors)} volatiliteitsfactoren...")
 
         # Maak een tqdm progress bar
         progress_bar = tqdm(
@@ -708,6 +794,26 @@ def optimize_parameters(
                     volatility_factor=test_params["volatility_factor"],
                 )
 
+                # Converteer timeframe naar pandas compatibel formaat
+                freq = None
+                if isinstance(df.index, pd.DatetimeIndex):
+                    if df.index.freq is not None:
+                        freq = df.index.freq
+                    else:
+                        # Handmatige berekening van frequentie
+                        if len(df) > 1:
+                            diff = df.index[1] - df.index[0]
+                            if diff.seconds == 300:  # 5 min
+                                freq = "5min"
+                            elif diff.seconds == 900:  # 15 min
+                                freq = "15min"
+                            elif diff.seconds == 3600:  # 1 uur
+                                freq = "1h"
+                            elif diff.seconds == 14400:  # 4 uur
+                                freq = "4h"
+                            elif diff.days == 1:  # 1 dag
+                                freq = "1d"
+
                 # Simuleer portfolio
                 portfolio = vbt.Portfolio.from_signals(
                     df.close,
@@ -715,6 +821,7 @@ def optimize_parameters(
                     exits=exit_signals,
                     init_cash=initial_capital,
                     fees=0.0001,
+                    freq=freq
                 )
 
                 # Bereken metrics
@@ -725,16 +832,28 @@ def optimize_parameters(
                 except:
                     # Fallback voor andere VectorBT versies
                     returns = portfolio.returns()
-                    equity = portfolio.equity()
+                    try:
+                        # Gebruik value() in plaats van equity
+                        equity_curve = portfolio.value()
 
-                    total_return = (equity.iloc[-1] - equity.iloc[0]) / equity.iloc[0]
-                    sharpe_ratio = (
-                        returns.mean() / returns.std() * np.sqrt(252)
-                        if returns.std() != 0
-                        else 0
-                    )
-                    max_dd = (equity / equity.cummax() - 1).min()
-                    max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                        total_return = (equity_curve.iloc[-1] - equity_curve.iloc[0]) / equity_curve.iloc[0]
+                        sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                        max_dd = (equity_curve / equity_curve.cummax() - 1).min()
+                        max_drawdown = max_dd if not np.isnan(max_dd) else 0
+                    except:
+                        # Als value() niet werkt, probeer dan final_value()
+                        try:
+                            init_value = portfolio.init_cash
+                            final_value = portfolio.final_value()
+
+                            total_return = (final_value - init_value) / init_value
+                            sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() != 0 else 0
+                            max_drawdown = 0  # Kan niet berekenen zonder curve
+                        except:
+                            # Als nog steeds niet lukt, gebruik standaardwaarden
+                            total_return = 0
+                            sharpe_ratio = 0
+                            max_drawdown = 0
 
                 # Bereken win rate
                 trades = portfolio.trades.records
@@ -800,7 +919,7 @@ def optimize_parameters(
     # Als er geen resultaten zijn, return None
     if len(results_df) == 0:
         logger.error("Geen geldige optimalisatieresultaten gevonden.")
-        print("\n[❌] Geen geldige optimalisatieresultaten gevonden.")
+        print("\nGeen geldige optimalisatieresultaten gevonden.")
         return None, None, None
 
     # Neem de beste parameters
@@ -833,7 +952,7 @@ def optimize_parameters(
     elapsed_time = time.time() - start_time
     print("\n" + "=" * 60)
     print(
-        f"[⏱️] Optimalisatie voltooid in {elapsed_time:.2f} seconden ({elapsed_time/60:.2f} minuten)"
+        f"Optimalisatie voltooid in {elapsed_time:.2f} seconden ({elapsed_time/60:.2f} minuten)"
     )
     print("=" * 60)
 
@@ -842,7 +961,7 @@ def optimize_parameters(
 
 def plot_backtest_results(df, portfolio, symbol, timeframe):
     """Plot backtest resultaten."""
-    print(f"\n[📊] Plotten van backtest resultaten voor {symbol} ({timeframe})...")
+    print(f"\nPlotten van backtest resultaten voor {symbol} ({timeframe})...")
 
     try:
         # Maak subplot figuur
@@ -921,24 +1040,27 @@ def plot_backtest_results(df, portfolio, symbol, timeframe):
             portfolio.plot(ax=ax3)
         except:
             # Fallback voor andere VectorBT versies
-            equity = portfolio.equity()
-            ax3.plot(equity.index, equity.values, label="Equity")
-            ax3.set_title("Equity Curve")
-            ax3.set_ylabel("Portfolio Value")
-            ax3.legend()
-            ax3.grid(True)
+            try:
+                equity = portfolio.value()
+                ax3.plot(equity.index, equity.values, label="Equity")
+                ax3.set_title("Equity Curve")
+                ax3.set_ylabel("Portfolio Value")
+                ax3.legend()
+                ax3.grid(True)
+            except:
+                logger.warning("Kon equity curve niet plotten")
 
         plt.tight_layout()
         plt.show()
 
     except Exception as e:
         logger.error(f"Fout bij plotten van resultaten: {str(e)}")
-        print(f"[❌] Fout bij plotten van resultaten: {str(e)}")
+        print(f"Fout bij plotten van resultaten: {str(e)}")
 
 
 def save_results(results, portfolio, symbol, timeframe, output_dir="./results"):
     """Slaat backtest resultaten op."""
-    print(f"\n[💾] Resultaten opslaan naar {output_dir}...")
+    print(f"\nResultaten opslaan naar {output_dir}...")
 
     try:
         # Maak output directory indien deze niet bestaat
@@ -972,19 +1094,29 @@ def save_results(results, portfolio, symbol, timeframe, output_dir="./results"):
 
         # Sla equity curve op als CSV
         try:
-            equity_file = os.path.join(
-                output_dir, f"{symbol}_{timeframe}_{timestamp}_equity.csv"
-            )
-            portfolio.equity().to_csv(equity_file)
+            try:
+                equity_file = os.path.join(
+                    output_dir, f"{symbol}_{timeframe}_{timestamp}_equity.csv"
+                )
+                portfolio.value().to_csv(equity_file)
+            except:
+                logger.warning("Kon equity niet opslaan via value(), probeer via equity()")
+                try:
+                    equity_file = os.path.join(
+                        output_dir, f"{symbol}_{timeframe}_{timestamp}_equity.csv"
+                    )
+                    portfolio.equity().to_csv(equity_file)
+                except:
+                    logger.warning("Kon equity curve niet opslaan")
         except Exception as e:
             logger.warning(f"Kon equity curve niet opslaan: {str(e)}")
 
         logger.info(f"Resultaten opgeslagen in {output_dir}")
-        print(f"[✅] Resultaten opgeslagen in {output_dir}")
+        print(f"Resultaten opgeslagen in {output_dir}")
 
     except Exception as e:
         logger.error(f"Fout bij opslaan resultaten: {str(e)}")
-        print(f"[❌] Fout bij opslaan resultaten: {str(e)}")
+        print(f"Fout bij opslaan resultaten: {str(e)}")
 
 
 def main():
@@ -996,26 +1128,19 @@ def main():
     print("\n" + "=" * 80)
     print(
         """
-    ███████╗ ██████╗ ██████╗ ██╗  ██╗██╗   ██╗██████╗ 
-    ██╔════╝██╔═══██╗██╔══██╗██║  ██║╚██╗ ██╔╝╚════██╗
-    ███████╗██║   ██║██████╔╝███████║ ╚████╔╝  █████╔╝
-    ╚════██║██║   ██║██╔═══╝ ██╔══██║  ╚██╔╝  ██╔═══╝ 
-    ███████║╚██████╔╝██║     ██║  ██║   ██║   ███████╗
-    ╚══════╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚══════╝
-                                                      
-    Backtesting Tool v3.0
+    Sophy3 - Backtesting Tool v3.0
     """
     )
     print("=" * 80)
 
     # Initialiseer MT5 indien credentials zijn opgegeven
     if args.mt5_account and args.mt5_password:
-        print(f"[🔌] Verbinden met MetaTrader 5...")
+        print(f"Verbinden met MetaTrader 5...")
         if not initialize_mt5(args.mt5_account, args.mt5_password, args.mt5_server):
             logger.error("MT5 initialisatie gefaald, afbreken.")
-            print("[❌] MT5 initialisatie gefaald, afbreken.")
+            print("MT5 initialisatie gefaald, afbreken.")
             return
-        print("[✅] Verbonden met MetaTrader 5")
+        print("Verbonden met MetaTrader 5")
 
     # Bepaal start/eind datums
     end_date = (
@@ -1046,19 +1171,19 @@ def main():
     logger.info(
         f"Backtesting {args.symbol} op {args.timeframe} van {start_date} tot {end_date}"
     )
-    print(f"[📈] Backtesting {args.symbol} op {args.timeframe}")
+    print(f"Backtesting {args.symbol} op {args.timeframe}")
     print(
-        f"[📅] Periode: {start_date.strftime('%Y-%m-%d')} tot {end_date.strftime('%Y-%m-%d')}"
+        f"Periode: {start_date.strftime('%Y-%m-%d')} tot {end_date.strftime('%Y-%m-%d')}"
     )
 
     # Haal data op
-    print(f"[📊] Data ophalen voor {args.symbol}...", end="", flush=True)
+    print(f"Data ophalen voor {args.symbol}...", end="", flush=True)
     t0 = time.time()
     df = get_data(
         args.symbol,
         args.timeframe,
         start_date,
-        args.bars,
+        end_date,
         use_cache=not args.no_cache,
         refresh_cache=args.refresh_cache,
     )
@@ -1067,24 +1192,24 @@ def main():
 
     if df is None or len(df) == 0:
         logger.error("Geen data ontvangen, afbreken.")
-        print("[❌] Geen data ontvangen, afbreken.")
+        print("Geen data ontvangen, afbreken.")
         return
 
     logger.info(f"Data ontvangen: {len(df)} bars van {df.index[0]} tot {df.index[-1]}")
     print(
-        f"[✅] Data ontvangen: {len(df)} bars van {df.index[0].strftime('%Y-%m-%d %H:%M')} tot {df.index[-1].strftime('%Y-%m-%d %H:%M')}"
+        f"Data ontvangen: {len(df)} bars van {df.index[0].strftime('%Y-%m-%d %H:%M')} tot {df.index[-1].strftime('%Y-%m-%d %H:%M')}"
     )
 
     # Haal parameters op
     if args.parameter_preset:
         logger.info(f"Gebruik parameter preset: {args.parameter_preset}")
-        print(f"[⚙️] Gebruik parameter preset: {args.parameter_preset}")
+        print(f"Gebruik parameter preset: {args.parameter_preset}")
         asset_class = args.parameter_preset
     else:
         asset_class = (
             args.symbol
         )  # get_strategy_params detecteert automatisch de asset class
-        print(f"[⚙️] Auto-detectie asset class voor {args.symbol}...")
+        print(f"Auto-detectie asset class voor {args.symbol}...")
 
     strategy_params = get_strategy_params(asset_class)
     risk_params = get_risk_params(asset_class)
@@ -1122,7 +1247,7 @@ def main():
         # Controleer of optimalisatie succesvol was
         if strategy_params is None:
             logger.error("Parameteroptimalisatie mislukt, afbreken.")
-            print("[❌] Parameteroptimalisatie mislukt, afbreken.")
+            print("Parameteroptimalisatie mislukt, afbreken.")
             return
 
         # Sla optimalisatieresultaten op indien gevraagd
@@ -1147,7 +1272,7 @@ def main():
     # Controleer of backtest succesvol was
     if results is None or portfolio is None:
         logger.error("Backtest mislukt, afbreken.")
-        print("[❌] Backtest mislukt, afbreken.")
+        print("Backtest mislukt, afbreken.")
         return
 
     # Plot resultaten indien gevraagd
@@ -1165,7 +1290,7 @@ def main():
     overall_elapsed_time = time.time() - overall_start_time
     print("\n" + "=" * 80)
     print(
-        f"[⏱️] Totale uitvoeringstijd: {overall_elapsed_time:.2f} seconden ({overall_elapsed_time/60:.2f} minuten)"
+        f"Totale uitvoeringstijd: {overall_elapsed_time:.2f} seconden ({overall_elapsed_time/60:.2f} minuten)"
     )
     print("=" * 80)
 
