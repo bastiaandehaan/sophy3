@@ -33,3 +33,7 @@ data/historical/*.csv
 
 # MT5 credentials
 *.mt5cred
+/cached_data/
+/logs/
+/output/
+/scripts/data/cache/

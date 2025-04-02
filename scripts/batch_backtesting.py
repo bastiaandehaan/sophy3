@@ -27,6 +27,13 @@ import psutil
 import argparse
 from datetime import datetime
 
+import os
+import sys
+
+# Voeg de root directory toe aan sys.path zodat modules gevonden worden
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_dir)
+print(f"[INFO] Project root toegevoegd aan sys.path: {root_dir}")
 # Sophy3 imports
 from strategies.multi_layer_ema import multi_layer_ema_strategy
 from strategies.params import get_strategy_params, get_risk_params
@@ -70,7 +77,9 @@ def get_data(symbol: str, timeframe: str, max_bars=None):
         DataFrame met OHLCV-data
     """
     # Probeer uit cache te laden
-    df = load_from_cache(symbol, timeframe)
+    from data.sources import get_data
+    # ...
+    df = get_data(symbol, timeframe, use_cache=True, refresh_cache=False)
     if df is None:
         logger.error(f"Geen data beschikbaar in cache voor {symbol} {timeframe}")
         return None
@@ -82,6 +91,30 @@ def get_data(symbol: str, timeframe: str, max_bars=None):
         return df.tail(max_bars)
 
     return df
+
+
+def filter_strategy_params(strategy_params):
+    """
+    Filtert parameters om alleen de relevante door te geven aan de strategie functie.
+
+    Parameters:
+    -----------
+    strategy_params : dict
+        Alle strategie parameters
+
+    Returns:
+    --------
+    dict
+        Gefilterde parameters die multi_layer_ema_strategy accepteert
+    """
+    # Lijst van geldige parameters voor multi_layer_ema_strategy
+    valid_params = ['ema_periods', 'rsi_period', 'rsi_oversold', 'rsi_overbought',
+                    'volatility_factor']
+
+    # Filter parameters
+    filtered_params = {k: v for k, v in strategy_params.items() if k in valid_params}
+
+    return filtered_params
 
 
 def calculate_metrics(portfolio, trades_df):
@@ -112,7 +145,7 @@ def calculate_metrics(portfolio, trades_df):
         sharpe_ratio = returns.mean() / returns.std() * np.sqrt(
             252) if returns.std() != 0 else 0
         max_drawdown = (
-                                   portfolio.equity().cummax() - portfolio.equity()).max() / portfolio.equity().cummax().max()
+                               portfolio.equity().cummax() - portfolio.equity()).max() / portfolio.equity().cummax().max()
         total_return = (portfolio.equity().iloc[-1] - portfolio.equity().iloc[0]) / \
                        portfolio.equity().iloc[0]
 
@@ -129,8 +162,8 @@ def calculate_metrics(portfolio, trades_df):
         win_loss_ratio = 0
 
     return {'sharpe_ratio': sharpe_ratio, 'max_drawdown': max_drawdown,
-        'total_return': total_return, 'win_rate': win_rate,
-        'win_loss_ratio': win_loss_ratio, 'total_trades': len(trades_df)}
+            'total_return': total_return, 'win_rate': win_rate,
+            'win_loss_ratio': win_loss_ratio, 'total_trades': len(trades_df)}
 
 
 def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
@@ -183,14 +216,14 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
     # Bepaal aantal bars per timeframe voor geheugenefficiëntie
     if adaptive_bars:
         timeframe_max_bars = {'M1': 5000,  # 5000 minuut bars (3-4 dagen)
-            'M5': 5000,  # 5000 5-min bars (2-3 weken)
-            'M15': 3000,  # 3000 15-min bars (1 maand)
-            'M30': 2500,  # 2500 30-min bars (1-2 maanden)
-            'H1': 2000,  # 2000 uur bars (3-4 maanden)
-            'H4': 1000,  # 1000 4-uur bars (6 maanden)
-            'D1': 500,  # 500 dag bars (2 jaar)
-            'W1': 200  # 200 week bars (4 jaar)
-        }
+                              'M5': 5000,  # 5000 5-min bars (2-3 weken)
+                              'M15': 3000,  # 3000 15-min bars (1 maand)
+                              'M30': 2500,  # 2500 30-min bars (1-2 maanden)
+                              'H1': 2000,  # 2000 uur bars (3-4 maanden)
+                              'H4': 1000,  # 1000 4-uur bars (6 maanden)
+                              'D1': 500,  # 500 dag bars (2 jaar)
+                              'W1': 200  # 200 week bars (4 jaar)
+                              }
     else:
         timeframe_max_bars = None
 
@@ -199,7 +232,7 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
         for timeframe in timeframes:
             # Controleer geheugengebruik en forceer garbage collection indien nodig
             current_memory_pct = log_memory_usage() / (
-                        psutil.virtual_memory().total / (1024 * 1024)) * 100
+                    psutil.virtual_memory().total / (1024 * 1024)) * 100
             if current_memory_pct > max_memory_pct:
                 logger.warning(
                     f"Geheugengebruik hoog ({current_memory_pct:.1f}%), uitvoeren garbage collection")
@@ -248,14 +281,18 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
 
             # Genereer signalen
             try:
-                entries, exits = multi_layer_ema_strategy(df, **strategy_params)
+                # Filter strategie parameters
+                filtered_params = filter_strategy_params(strategy_params)
+                entries, exits = multi_layer_ema_strategy(df, **filtered_params)
 
                 # Voer backtest uit met vectorbt
                 portfolio = vbt.Portfolio.from_signals(close=df['close'],
-                    entries=entries, exits=exits, size=1.0,
-                    # Vereenvoudigd: vaste grootte voor vergelijking
-                    freq=timeframe  # Timeframe voor juiste berekening
-                )
+                                                       entries=entries, exits=exits,
+                                                       size=1.0,
+                                                       # Vereenvoudigd: vaste grootte voor vergelijking
+                                                       freq=timeframe
+                                                       # Timeframe voor juiste berekening
+                                                       )
 
                 # Haal trades op
                 trades = portfolio.trades.records
@@ -272,14 +309,15 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
 
                 # Sla resultaat op
                 result = {'symbol': symbol, 'timeframe': timeframe,
-                    'sharpe_ratio': metrics['sharpe_ratio'],
-                    'total_return': metrics['total_return'],
-                    'max_drawdown': metrics['max_drawdown'],
-                    'win_rate': metrics['win_rate'],
-                    'win_loss_ratio': metrics['win_loss_ratio'],
-                    'total_trades': metrics['total_trades'], 'bars_tested': len(df),
-                    'date_range': f"{df.index[0]} tot {df.index[-1]}",
-                    'runtime_seconds': elapsed_time}
+                          'sharpe_ratio': metrics['sharpe_ratio'],
+                          'total_return': metrics['total_return'],
+                          'max_drawdown': metrics['max_drawdown'],
+                          'win_rate': metrics['win_rate'],
+                          'win_loss_ratio': metrics['win_loss_ratio'],
+                          'total_trades': metrics['total_trades'],
+                          'bars_tested': len(df),
+                          'date_range': f"{df.index[0]} tot {df.index[-1]}",
+                          'runtime_seconds': elapsed_time}
 
                 results.append(result)
 
@@ -371,5 +409,5 @@ if __name__ == "__main__":
 
     # Voer batch backtesting uit met opgegeven parameters
     run_batch_backtesting(symbols=args.symbols, timeframes=args.timeframes,
-        batch_size=args.batch_size, max_memory_pct=args.max_memory,
-        adaptive_bars=not args.no_adaptive)
+                          batch_size=args.batch_size, max_memory_pct=args.max_memory,
+                          adaptive_bars=not args.no_adaptive)
