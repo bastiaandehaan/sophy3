@@ -1,0 +1,6 @@
+2025-04-05 11:39:15,017 - __main__ - INFO - Backtesting EURUSD op H1 van 2025-01-11 11:39:15.017762 tot 2025-04-05 11:39:15.017762
+2025-04-05 11:39:15,044 - data.cache - INFO - Data uit cache geladen: data/cache\forex\EURUSD\H1.parquet (1440 bars)
+2025-04-05 11:39:15,044 - data.sources - INFO - Data uit cache geladen voor EURUSD (H1): 1440 bars
+2025-04-05 11:39:15,044 - __main__ - INFO - Data ontvangen: 1440 bars van 2025-01-13 00:00:00 tot 2025-04-04 23:00:00
+2025-04-05 11:39:15,044 - __main__ - INFO - Backtest starten met strategie parameters: {'ema_periods': [20, 50, 200], 'rsi_period': 14, 'rsi_oversold': 30, 'rsi_overbought': 70, 'volatility_factor': 0.5, 'risk_per_trade': 0.01}
+2025-04-05 11:39:15,044 - __main__ - INFO - Risk parameters: {'max_daily_loss': 0.05, 'max_total_loss': 0.1, 'profit_target': 0.1, 'min_trading_days': 4, 'risk_per_trade': 0.01}
