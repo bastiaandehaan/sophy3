@@ -31,7 +31,7 @@
     <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="ignoredPackages">
         <value>
-          <list size="34">
+          <list size="37">
             <item index="0" class="java.lang.String" itemvalue="referencing" />
             <item index="1" class="java.lang.String" itemvalue="decorator" />
             <item index="2" class="java.lang.String" itemvalue="pywinpty" />
@@ -66,6 +66,9 @@
             <item index="31" class="java.lang.String" itemvalue="async-lru" />
             <item index="32" class="java.lang.String" itemvalue="pytz" />
             <item index="33" class="java.lang.String" itemvalue="dash" />
+            <item index="34" class="java.lang.String" itemvalue="pandas" />
+            <item index="35" class="java.lang.String" itemvalue="tenacity" />
+            <item index="36" class="java.lang.String" itemvalue="typing_extensions" />
           </list>
         </value>
       </option>

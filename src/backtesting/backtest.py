@@ -52,12 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Vectorbt instellingen
-vbt.settings.set(
-    portfolio={
-        "fees": 0.0001,  # 0.01% fees per trade
-    }
-)
-
+vbt.settings.portfolio["fees"] = 0.0001  # 0.01% fees per trade
 
 
 def parse_args():

@@ -4,7 +4,7 @@ import logging
 import MetaTrader5 as mt5
 import pandas as pd
 
-from src.data.cache import load_from_cache, save_to_cache  # Geüpdatet
+from src.data.cache import load_from_cache, save_to_cache
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +23,13 @@ def initialize_mt5(account=None, password=None, server=None):
         if not mt5.login(account, password, server):
             logger.error(f"MT5 login gefaald: {mt5.last_error()}")
             return False
+    logger.info("MT5 succesvol geïnitialiseerd")
     return True
 
 def shutdown_mt5():
     """Sluit MT5 terminal af."""
     mt5.shutdown()
+    logger.info("MT5 verbinding afgesloten")
 
 def get_mt5_data(symbol, timeframe, start_date=None, end_date=None, bars=None):
     """
@@ -48,15 +50,21 @@ def get_mt5_data(symbol, timeframe, start_date=None, end_date=None, bars=None):
 
     Returns:
     --------
-    pandas.DataFrame of None
+    pandas.DataFrame or None
     """
     mt5_timeframe = MT5_TIMEFRAMES.get(timeframe)
     if not mt5_timeframe:
         logger.error(f"Ongeldige timeframe: {timeframe}")
         return None
-    if not mt5.symbol_select(symbol, True):
-        logger.error(f"Symbool {symbol} niet gevonden in MT5")
+
+    # Controleer symboolbeschikbaarheid
+    if not mt5.symbol_info(symbol):
+        logger.error(f"Symbool {symbol} niet beschikbaar in MT5")
         return None
+    if not mt5.symbol_select(symbol, True):
+        logger.error(f"Symbool {symbol} niet geselecteerd in MT5")
+        return None
+
     try:
         if bars is not None:
             rates = mt5.copy_rates_from_pos(symbol, mt5_timeframe, 0, bars)
@@ -106,7 +114,7 @@ def get_data(symbol, timeframe, start_date=None, end_date=None, use_cache=True,
 
     Returns:
     --------
-    pandas.DataFrame of None
+    pandas.DataFrame or None
     """
     if manage_connection:
         if not initialize_mt5():

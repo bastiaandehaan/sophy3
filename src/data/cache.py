@@ -1,4 +1,4 @@
-# data/cache.py
+# src/data/cache.py
 import logging
 import os
 from datetime import datetime, timedelta
@@ -10,7 +10,6 @@ import pyarrow.parquet as pq
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = "data/cache"
-
 
 def get_cache_path(symbol: str, timeframe: str, asset_class: str = None) -> str:
     """
@@ -42,7 +41,6 @@ def get_cache_path(symbol: str, timeframe: str, asset_class: str = None) -> str:
     filename = f"{timeframe}.parquet"
     return os.path.join(directory, filename)
 
-
 def is_cache_valid(cache_path: str, max_age: timedelta) -> bool:
     """
     Controleert of cache nog geldig is.
@@ -63,7 +61,6 @@ def is_cache_valid(cache_path: str, max_age: timedelta) -> bool:
         return False
     file_mod_time = datetime.fromtimestamp(os.path.getmtime(cache_path))
     return datetime.now() - file_mod_time <= max_age
-
 
 def get_cache_max_age(timeframe: str) -> timedelta:
     """
@@ -87,9 +84,7 @@ def get_cache_max_age(timeframe: str) -> timedelta:
     else:
         return timedelta(days=90)  # Dag en hoger: 3 maanden geldig
 
-
-def save_to_cache(df: pd.DataFrame, symbol: str, timeframe: str,
-                  asset_class: str = None) -> bool:
+def save_to_cache(df: pd.DataFrame, symbol: str, timeframe: str, asset_class: str = None) -> bool:
     """
     Slaat DataFrame op in cache.
 
@@ -115,15 +110,15 @@ def save_to_cache(df: pd.DataFrame, symbol: str, timeframe: str,
         # Controleer of de df een index heeft die kan worden omgezet naar een kolom
         df_to_save = df.copy()
 
-        # Als de index een DatetimeIndex is, reset deze en houd kolom "time"
+        # Als de index een DatetimeIndex is, reset deze en voorkom kolomconflicten
         if isinstance(df_to_save.index, pd.DatetimeIndex):
-            df_to_save = df_to_save.reset_index()
-            if 'index' in df_to_save.columns and 'time' not in df_to_save.columns:
-                df_to_save = df_to_save.rename(columns={'index': 'time'})
+            if 'time' in df_to_save.columns:
+                df_to_save = df_to_save.rename(columns={'time': 'original_time'})
+            df_to_save = df_to_save.reset_index().rename(columns={'index': 'time'})
 
-        # Maak een PyArrow-tabel en sla op als Parquet
+        # Maak een PyArrow-tabel en sla op als Parquet met compressie
         table = pa.Table.from_pandas(df_to_save)
-        pq.write_table(table, cache_path)
+        pq.write_table(table, cache_path, compression='snappy')
 
         logger.info(f"Data in cache opgeslagen: {cache_path} ({len(df)} bars)")
         return True
@@ -131,9 +126,7 @@ def save_to_cache(df: pd.DataFrame, symbol: str, timeframe: str,
         logger.error(f"Fout bij opslaan in cache: {str(e)}")
         return False
 
-
-def load_from_cache(symbol: str, timeframe: str, asset_class: str = None,
-                    start_date=None, end_date=None):
+def load_from_cache(symbol: str, timeframe: str, asset_class: str = None, start_date=None, end_date=None):
     """
     Laadt data uit cache.
 
@@ -167,7 +160,7 @@ def load_from_cache(symbol: str, timeframe: str, asset_class: str = None,
         table = pq.read_table(cache_path)
         df = table.to_pandas()
 
-        # Controleer of de kolom 'time' aanwezig is en converteer deze
+        # Controleer en stel index in
         if 'time' in df.columns:
             df['time'] = pd.to_datetime(df['time'])
             df.set_index('time', inplace=True)
@@ -189,9 +182,7 @@ def load_from_cache(symbol: str, timeframe: str, asset_class: str = None,
         logger.error(f"Fout bij laden uit cache: {str(e)}")
         return None
 
-
-def clear_cache(symbol: str = None, timeframe: str = None, asset_class: str = None,
-                older_than_days: int = None) -> int:
+def clear_cache(symbol: str = None, timeframe: str = None, asset_class: str = None, older_than_days: int = None) -> int:
     """
     Verwijdert cachebestanden op basis van filters.
 
