@@ -1,25 +1,25 @@
-import vectorbt as vbt
+import argparse
+import os
+import sys
+import time
+from datetime import datetime
+
 import MetaTrader5 as mt5
 import schedule
-import time
-import argparse
-import sys
-import os
-from datetime import datetime
+import vectorbt as vbt
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from strategies.multi_layer_ema import multi_layer_ema_strategy
-from strategies.params import get_params
-from risk.manager import FTMORiskManager
-from data.sources import get_historical_data
+from src.strategies.ema_strategy import multi_layer_ema_strategy
+from src.strategies.params import get_strategy_params
+from src.risk import FTMORiskManager
+from src.data.sources import get_data as get_historical_data  # Geüpdatet
 
 # Global variables
 risk_manager = None
 active_symbols = []
 trading_active = True
-
 
 def connect_mt5(account, password, server):
     """Connect to MT5 terminal"""
@@ -37,7 +37,6 @@ def connect_mt5(account, password, server):
     print(f"Connected to MT5: {mt5.account_info().server}")
     return True
 
-
 def check_for_signals(symbol, timeframe):
     """Check for trading signals for a symbol"""
     global risk_manager
@@ -50,7 +49,7 @@ def check_for_signals(symbol, timeframe):
         data = get_historical_data(symbol, timeframe, lookback_periods=100)
 
         # Get parameters for this asset
-        params = get_params(symbol)
+        params = get_strategy_params(symbol)
 
         # Generate signals
         entries, exits = multi_layer_ema_strategy(data, **params)
@@ -117,14 +116,12 @@ def check_for_signals(symbol, timeframe):
     except Exception as e:
         print(f"Error checking signals for {symbol}: {e}")
 
-
 def reset_daily_risk():
     """Reset daily risk limits (call at start of trading day)"""
     global risk_manager
     if risk_manager:
         risk_manager.reset_daily_pnl()
         print(f"Daily risk limits reset at {datetime.now()}")
-
 
 def main():
     global risk_manager, active_symbols, trading_active
@@ -179,7 +176,6 @@ def main():
         print("Shutting down...")
         trading_active = False
         mt5.shutdown()
-
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,7 @@
 Sophy3 - Batch Backtesting Script (Geoptimaliseerd)
 Functie: Test meerdere symbolen en timeframes om prestaties te vergelijken
 Auteur: AI Trading Assistant (met input van gebruiker)
-Laatste update: 2025-04-02
+Laatste update: 2025-04-06
 
 Gebruik:
   python scripts/batch_backtesting.py [--max-memory] [--batch-size 3]
@@ -16,28 +16,26 @@ Dependencies:
   - data.cache
 """
 
-import pandas as pd
-import vectorbt as vbt
-import numpy as np
-import time
+import argparse
+import gc
 import logging
 import os
-import gc
-import psutil
-import argparse
+import sys
+import time
 from datetime import datetime
 
-import os
-import sys
+import numpy as np
+import pandas as pd
+import psutil
+import vectorbt as vbt
 
 # Voeg de root directory toe aan sys.path zodat modules gevonden worden
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(root_dir)
 print(f"[INFO] Project root toegevoegd aan sys.path: {root_dir}")
 # Sophy3 imports
-from strategies.multi_layer_ema import multi_layer_ema_strategy
-from strategies.params import get_strategy_params, get_risk_params
-from data.cache import load_from_cache
+from src.strategies.ema_strategy import multi_layer_ema_strategy
+from src.strategies.params import get_strategy_params, get_risk_params
 
 # Stel logger in
 logging.basicConfig(level=logging.INFO,
@@ -56,6 +54,27 @@ def log_memory_usage():
     memory_mb = memory_info.rss / (1024 * 1024)
     logger.info(f"Geheugengebruik: {memory_mb:.2f} MB")
     return memory_mb
+
+
+def convert_timeframe_to_freq(timeframe):
+    """Converteer MT5 timeframe naar pandas frequentie."""
+    if timeframe.startswith('M'):
+        # Minuten: M1, M5, M15, M30 -> 1T, 5T, 15T, 30T
+        minutes = timeframe[1:]
+        return f"{minutes}T"
+    elif timeframe.startswith('H'):
+        # Uren: H1, H4 -> 1h, 4h
+        hours = timeframe[1:]
+        return f"{hours}h"
+    elif timeframe.startswith('D'):
+        # Dagen: D1 -> 1D
+        days = timeframe[1:]
+        return f"{days}D"
+    elif timeframe.startswith('W'):
+        # Weken: W1 -> 1W
+        weeks = timeframe[1:]
+        return f"{weeks}W"
+    return timeframe  # Default
 
 
 def get_data(symbol: str, timeframe: str, max_bars=None):
@@ -77,7 +96,7 @@ def get_data(symbol: str, timeframe: str, max_bars=None):
         DataFrame met OHLCV-data
     """
     # Probeer uit cache te laden
-    from data.sources import get_data
+    from src.data import get_data
     # ...
     df = get_data(symbol, timeframe, use_cache=True, refresh_cache=False)
     if df is None:
@@ -144,10 +163,25 @@ def calculate_metrics(portfolio, trades_df):
         returns = portfolio.returns()
         sharpe_ratio = returns.mean() / returns.std() * np.sqrt(
             252) if returns.std() != 0 else 0
-        max_drawdown = (
-                               portfolio.equity().cummax() - portfolio.equity()).max() / portfolio.equity().cummax().max()
-        total_return = (portfolio.equity().iloc[-1] - portfolio.equity().iloc[0]) / \
-                       portfolio.equity().iloc[0]
+
+        # Fix voor max_drawdown berekening
+        try:
+            equity_series = portfolio.equity()
+            max_drawdown = (
+                                       equity_series.cummax() - equity_series).max() / equity_series.cummax().max()
+        except:
+            # Als equity niet beschikbaar is, gebruik value
+            value_series = portfolio.value()
+            max_dd = (value_series / value_series.cummax() - 1).min()
+            max_drawdown = max_dd if not np.isnan(max_dd) else 0
+
+        # Fix voor total_return berekening
+        try:
+            total_return = (portfolio.equity().iloc[-1] - portfolio.equity().iloc[0]) / \
+                           portfolio.equity().iloc[0]
+        except:
+            total_return = (
+                                       portfolio.final_value() - portfolio.init_cash) / portfolio.init_cash
 
     # Win rate berekenen
     if len(trades_df) > 0:
@@ -203,7 +237,7 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
         f"[📋] Testing {len(symbols)} symbolen × {len(timeframes)} timeframes = {len(symbols) * len(timeframes)} totale tests")
 
     # Zorg dat results directory bestaat
-    os.makedirs('results', exist_ok=True)
+    os.makedirs('../../scripts/results', exist_ok=True)
 
     # Log initieel geheugengebruik
     initial_memory = log_memory_usage()
@@ -286,11 +320,12 @@ def run_batch_backtesting(symbols=None, timeframes=None, batch_size=None,
                 entries, exits = multi_layer_ema_strategy(df, **filtered_params)
 
                 # Voer backtest uit met vectorbt
+                pandas_freq = convert_timeframe_to_freq(timeframe)
                 portfolio = vbt.Portfolio.from_signals(close=df['close'],
                                                        entries=entries, exits=exits,
                                                        size=1.0,
                                                        # Vereenvoudigd: vaste grootte voor vergelijking
-                                                       freq=timeframe
+                                                       freq=pandas_freq
                                                        # Timeframe voor juiste berekening
                                                        )
 

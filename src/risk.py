@@ -13,10 +13,8 @@ Dependencies:
   - numpy
 """
 
-import pandas as pd
-import numpy as np
-from datetime import datetime, date
 import logging
+from datetime import datetime, date
 
 # Stel logger in
 logger = logging.getLogger(__name__)

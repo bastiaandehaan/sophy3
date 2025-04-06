@@ -33,7 +33,6 @@ import yaml
 # Global variables
 QUIET_MODE = False
 
-
 def load_module_from_path(file_path):
     """Dynamically load a Python module from a file path."""
     try:
@@ -48,7 +47,6 @@ def load_module_from_path(file_path):
             print(f"Error loading module {file_path}: {e}")
         return None
 
-
 def extract_trading_pairs(file_paths):
     """Extract trading pairs mentioned in the codebase."""
     pairs = {
@@ -58,7 +56,6 @@ def extract_trading_pairs(file_paths):
         'indices': set()
     }
 
-    # Updated regex patterns to cover more trading pairs
     forex_pairs = re.compile(r'\b([A-Z]{3})(USD|EUR|GBP|JPY|AUD|NZD|CAD|CHF)\b')
     crypto_pairs = re.compile(r'\b(BTC|ETH|XRP|LTC|ADA|DOT|SOL|BCH|XMR)(USD|USDT|BTC|ETH|EUR)\b')
     stock_pattern = re.compile(r'\b(AAPL|MSFT|GOOGL|AMZN|TSLA|META|NFLX|NVDA|JPM|BA)\b')
@@ -78,9 +75,8 @@ def extract_trading_pairs(file_paths):
 
     return {k: sorted(list(v)) for k, v in pairs.items() if v}
 
-
 def extract_code_info(file_path):
-    """Extract classes, functions, and docstrings from a Python file."""
+    """Extract classes, functions, docstrings, and other metadata from a Python file."""
     try:
         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
@@ -93,7 +89,10 @@ def extract_code_info(file_path):
             'classes': [],
             'functions': [],
             'imports': [],
-            'docstring': "(File could not be read)"
+            'docstring': "(File could not be read)",
+            'internal_depends_on': [],
+            'has_main_block': False,
+            'uses_vectorbt': False
         }
 
     info = {
@@ -102,7 +101,10 @@ def extract_code_info(file_path):
         'classes': [],
         'functions': [],
         'imports': [],
-        'docstring': ""
+        'docstring': "",
+        'internal_depends_on': [],
+        'has_main_block': 'if __name__ == "__main__":' in content,
+        'uses_vectorbt': 'vbt.Portfolio.from_signals' in content
     }
 
     module_docstring_match = re.search(r'^"""(.*?)"""', content, re.DOTALL | re.MULTILINE)
@@ -165,8 +167,17 @@ def extract_code_info(file_path):
         imp['module'] + ('.' + imp['name'] if imp['module'] and imp['name'] != '*' else '')
         for imp in info['imports'] if imp['module'] and not imp['module'].startswith('__')
     ]
-    return info
 
+    # Detecteer interne projectafhankelijkheden
+    project_root = os.path.dirname(os.path.dirname(file_path))
+    internal_deps = []
+    for imp in info['imports']:
+        module_from = imp['module']
+        if module_from.startswith('src.'):
+            internal_deps.append(module_from)
+    info['internal_depends_on'] = internal_deps
+
+    return info
 
 def detect_asset_classes(file_paths):
     """Detect asset-class specific configurations and parameters."""
@@ -177,52 +188,24 @@ def detect_asset_classes(file_paths):
         'indices': {'indicators': [], 'parameters': {}, 'risk_settings': {}}
     }
 
+    # Laad params.py dynamisch
+    params_path = None
     for file_path in file_paths:
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
+        if file_path.endswith('params.py'):
+            params_path = file_path
+            break
 
-                for asset, patterns in {
-                    'forex': r"(forex|FX|EURUSD|GBPUSD)",
-                    'crypto': r"(crypto|BTCUSD|ETHUSD)",
-                    'stocks': r"(stock|AAPL|MSFT)",
-                    'indices': r"(index|SPX|DAX)"
-                }.items():
-                    if re.search(patterns, content, re.IGNORECASE):
-                        ema_match = re.search(r"ema_periods.*?=.*?(\[.*?\])", content, re.DOTALL)
-                        if ema_match:
-                            asset_classes[asset]['parameters']['ema_periods'] = eval(ema_match.group(1))
-
-                        rsi_match = re.search(r"rsi_period.*?=.*?([0-9]+)", content)
-                        if rsi_match:
-                            asset_classes[asset]['parameters']['rsi_period'] = int(rsi_match.group(1))
-
-                        risk_match = re.search(r"risk_per_trade.*?=.*?([0-9.]+)", content)
-                        if risk_match:
-                            asset_classes[asset]['risk_settings']['risk_per_trade'] = float(risk_match.group(1))
-
-                        vol_match = re.search(r"volatility_factor.*?=.*?([0-9.]+)", content)
-                        if vol_match:
-                            asset_classes[asset]['risk_settings']['volatility_factor'] = float(vol_match.group(1))
-        except:
-            continue
-
-    # Default values
-    defaults = {
-        'forex': {'ema_periods': [10, 50, 200], 'rsi_period': 14, 'risk_per_trade': 0.01},
-        'crypto': {'ema_periods': [8, 20, 50], 'rsi_period': 10, 'risk_per_trade': 0.01, 'volatility_factor': 1.5},
-        'stocks': {'ema_periods': [20, 50, 100], 'rsi_period': 14, 'risk_per_trade': 0.005},
-        'indices': {'ema_periods': [15, 60, 120], 'rsi_period': 14, 'risk_per_trade': 0.01}
-    }
-    for asset in asset_classes:
-        for key, value in defaults[asset].items():
-            if key not in asset_classes[asset]['parameters'] and 'parameters' in key:
-                asset_classes[asset]['parameters'][key] = value
-            elif key not in asset_classes[asset]['risk_settings'] and 'risk' in key:
-                asset_classes[asset]['risk_settings'][key] = value
+    if params_path:
+        params_module = load_module_from_path(params_path)
+        if params_module:
+            for asset in asset_classes:
+                # Haal parameters op
+                strategy_params = params_module.get_strategy_params(asset)
+                risk_params = params_module.get_risk_params(asset)
+                asset_classes[asset]['parameters'] = strategy_params
+                asset_classes[asset]['risk_settings'] = risk_params
 
     return asset_classes
-
 
 def extract_vectorbt_usage(file_paths):
     """Extract VectorBT-specific configuration and usage."""
@@ -260,7 +243,6 @@ def extract_vectorbt_usage(file_paths):
     vbt_info['metrics'] = sorted(list(vbt_info['metrics']))
     return vbt_info
 
-
 def extract_config_files(project_path):
     """Extract configuration from JSON and YAML files."""
     config_data = {}
@@ -279,7 +261,6 @@ def extract_config_files(project_path):
         except:
             continue
     return config_data
-
 
 def generate_dependency_graph(modules, output_file):
     """Generate a dependency graph visualization using Graphviz."""
@@ -314,7 +295,6 @@ def generate_dependency_graph(modules, output_file):
         print(f"Error generating dependency graph: {e}")
         return None
 
-
 def analyze_project(project_path, visualize=False):
     """Analyze the entire project structure."""
     project_info = {
@@ -343,6 +323,32 @@ def analyze_project(project_path, visualize=False):
         module_info = extract_code_info(file_path)
         project_info['modules'].append(module_info)
 
+    # Bouw een afhankelijkheidsgrafiek om te bepalen welke modules "core" zijn
+    dependency_counts = defaultdict(int)
+    for module in project_info['modules']:
+        module_name = os.path.splitext(module['file'])[0]
+        for dep in module['internal_depends_on']:
+            dep_name = dep.split('.')[-1]  # Bijv. 'backtest' uit 'src.backtesting.backtest'
+            dependency_counts[dep_name] += 1
+
+    # Classificeer modules
+    core_modules = []
+    workflow_modules = []
+    for module in project_info['modules']:
+        module_name = os.path.splitext(module['file'])[0]
+        # Een module is "core" als het vaak wordt geïmporteerd door andere modules
+        if dependency_counts.get(module_name, 0) > 1:  # Minimaal 2 imports om als "core" te gelden
+            core_modules.append(module)
+        # Een module is een "workflow" als het een main-block heeft en VectorBT gebruikt
+        elif module['has_main_block'] and module['uses_vectorbt']:
+            workflow_modules.append(module)
+        # Voeg modules die configuratie of data beheren ook toe aan core
+        elif any(keyword in module['file'].lower() for keyword in ['config', 'cache', 'params']):
+            core_modules.append(module)
+
+    project_info['core_modules'] = core_modules
+    project_info['workflow_modules'] = workflow_modules
+
     packages = defaultdict(list)
     for module in project_info['modules']:
         package_path = os.path.dirname(os.path.relpath(module['path'], project_path))
@@ -360,15 +366,13 @@ def analyze_project(project_path, visualize=False):
 
     return project_info
 
-
 def generate_summary_markdown(project_info, output_file):
     """Generate a markdown summary from the project information."""
     summary = f"# {project_info['name']} - Project Summary\n\n"
     summary += f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 
     summary += "## Core Components\n\n"
-    core_modules = [m for m in project_info['modules'] if any(p in m['file'] for p in ["backtest", "strategy", "risk", "params", "cache"])]
-    for module in core_modules:
+    for module in project_info['core_modules']:
         rel_path = os.path.relpath(module['path'], project_info['path'])
         summary += f"### {module['file']} - {os.path.dirname(rel_path)}\n\n"
         if module['docstring']:
@@ -383,6 +387,24 @@ def generate_summary_markdown(project_info, output_file):
                     summary += f"    - **{method['name']}**: {method['docstring'].split('.')[0] if method['docstring'] else method['signature']}\n"
             summary += "\n"
 
+        if module['functions']:
+            summary += "**Functions:**\n"
+            for func in module['functions']:
+                summary += f"- **{func['name']}**: {func['docstring'].split('.')[0] if func['docstring'] else ''}\n"
+            summary += "\n"
+
+        if module['internal_depends_on']:
+            summary += "**Internal Dependencies:**\n"
+            for dep in module['internal_depends_on']:
+                summary += f"- {dep}\n"
+            summary += "\n"
+
+    summary += "## Workflows\n\n"
+    for module in project_info['workflow_modules']:
+        rel_path = os.path.relpath(module['path'], project_info['path'])
+        summary += f"### {module['file']} - {os.path.dirname(rel_path)}\n\n"
+        if module['docstring']:
+            summary += f"{module['docstring']}\n\n"
         if module['functions']:
             summary += "**Functions:**\n"
             for func in module['functions']:
@@ -444,7 +466,6 @@ def generate_summary_markdown(project_info, output_file):
         f.write(summary)
     return summary
 
-
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Generate a summary of a VectorBT-based trading system project')
@@ -453,7 +474,6 @@ def parse_args():
     parser.add_argument('--quiet', action='store_true', help='Suppress non-critical error messages')
     parser.add_argument('--visualize', action='store_true', help='Generate a dependency graph (requires graphviz)')
     return parser.parse_args()
-
 
 def main():
     """Main function for the script."""
@@ -465,7 +485,6 @@ def main():
     summary = generate_summary_markdown(project_info, args.output)
     print(f"Project summary written to {args.output}")
     print(f"Analyzed {len(project_info['modules'])} modules, {len(project_info['recent_changes'])} recent changes")
-
 
 if __name__ == "__main__":
     main()

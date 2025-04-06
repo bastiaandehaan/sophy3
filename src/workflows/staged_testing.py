@@ -27,7 +27,6 @@ print(f"[INFO] Project root toegevoegd aan sys.path: {root_dir}")
 
 import pandas as pd
 import vectorbt as vbt
-import numpy as np
 import time
 import logging
 import gc
@@ -38,11 +37,11 @@ import argparse
 # Controleer of modules gevonden kunnen worden
 try:
     # Importeer Sophy3 componenten
-    from strategies.multi_layer_ema import multi_layer_ema_strategy
-    from strategies.params import get_strategy_params, get_risk_params, \
+    from src.strategies.ema_strategy import multi_layer_ema_strategy
+    from src.strategies.params import get_strategy_params, get_risk_params, \
         detect_asset_class
-    from data.cache import load_from_cache
-    from data.sources import get_data, initialize_mt5, shutdown_mt5
+    from src.data import load_from_cache
+    from src.data import get_data, initialize_mt5, shutdown_mt5
 
     print("[INFO] Alle benodigde modules zijn succesvol geïmporteerd")
 except ImportError as e:
@@ -53,7 +52,7 @@ except ImportError as e:
 # Stel logger in
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s",
-                    handlers=[logging.FileHandler("staged_testing.log"),
+                    handlers=[logging.FileHandler("../../scripts/staged_testing.log"),
                         logging.StreamHandler()])
 logger = logging.getLogger(__name__)
 
@@ -290,7 +289,7 @@ def run_asset_class_screening(timeframe='H1'):
         results_df = pd.DataFrame(results)
 
         # Maak results directory indien nodig
-        os.makedirs('results', exist_ok=True)
+        os.makedirs('../../scripts/results', exist_ok=True)
 
         # Gemiddeldes per asset class
         avg_by_class = results_df.groupby('asset_class')[
@@ -487,7 +486,7 @@ def run_parameter_optimization(symbol, timeframe):
 
     try:
         # Importeer de backtest optimalisatiefunctie - Delayed import om circulaire imports te voorkomen
-        from scripts.backtest import optimize_parameters, run_backtest as backtest_run
+        from src.backtesting.backtest import optimize_parameters, run_backtest as backtest_run
 
         # Haal data op
         log_memory_usage()
@@ -611,7 +610,7 @@ def run_staged_testing(skip_to_phase=None, specific_assets=None,
         Test alleen deze specifieke timeframes (alleen relevant als je fases overslaat)
     """
     # Zorg dat de resultaten-directory bestaat
-    os.makedirs('results', exist_ok=True)
+    os.makedirs('../../scripts/results', exist_ok=True)
 
     overall_start_time = time.time()
     print("\n" + "=" * 70)

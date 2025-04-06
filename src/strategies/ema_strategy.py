@@ -14,7 +14,6 @@ Dependencies:
   - pandas
 """
 
-import numpy as np
 import pandas as pd
 
 def ema(series, length):

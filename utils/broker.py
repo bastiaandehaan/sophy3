@@ -1,7 +1,9 @@
+import datetime
+
 import MetaTrader5 as mt5
 import pandas as pd
-import datetime
 import pytz
+
 
 def get_symbol_details():
     """Haal gedetailleerde informatie op over alle MT5-symbolen."""

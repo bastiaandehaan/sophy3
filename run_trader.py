@@ -12,10 +12,8 @@ Dependencies:
   - subprocess
 """
 
-import os
-import time
 import subprocess
-import argparse
+import time
 from datetime import datetime
 
 
