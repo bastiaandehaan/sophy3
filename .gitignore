@@ -12,6 +12,7 @@ build/
 venv/
 env/
 ENV/
+.venv/
 
 # IDE files
 .idea/
@@ -25,15 +26,20 @@ ENV/
 # Local configuration
 config/local_config.json
 
-# Historical data
+# Data files
 data/historical/*.csv
+src/data/cache/
+cached_data/
 
-# Logs
+# Output and logs
+logs/
+output/
 *.log
 
-# MT5 credentials
+# MT5 credentials and sensitive data
 *.mt5cred
-/cached_data/
-/logs/
-/output/
-/scripts/data/cache/
+*_credentials.*
+
+# OS generated files
+.DS_Store
+Thumbs.db
