@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sophy3"
+version = "0.1.0"
+description = "Sophy3 Trading Framework"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.23.5",
+    "pandas",
+    "vectorbt",
+    "matplotlib",
+    "MetaTrader5",
+    "tqdm",
+    "pyarrow",
+    "PyYAML",
+]
+
+[tool.setuptools]
+packages = ["src"]
