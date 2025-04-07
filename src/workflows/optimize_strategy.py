@@ -33,7 +33,6 @@ sys.path.append(root_dir)
 # Import Sophy3 components
 from src.data.sources import get_data
 from src.strategies.ema_strategy import multi_layer_ema_strategy
-from src.utils.time_utils import detect_timeframe_frequency
 
 # Configure logging
 logging.basicConfig(
@@ -139,7 +138,7 @@ def optimize_sl_tp(data, ema_short, ema_medium, ema_long, rsi_period,
                 sl_stop=sl_pct,  # Dynamic SL based on ATR
                 tp_stop=tp_pct,  # Dynamic TP based on ATR
                 init_cash=capital,
-                freq=detect_timeframe_frequency(data.index)
+                freq='H'
             )
 
             # Get key metrics
@@ -231,7 +230,7 @@ def optimize_ema_periods(data, sl_atr, tp_atr, rsi_period,
                     sl_stop=sl_pct,
                     tp_stop=tp_pct,
                     init_cash=capital,
-                    freq=detect_timeframe_frequency(data.index)
+                    freq='H'
                 )
 
                 # Get key metrics
@@ -326,7 +325,7 @@ def optimize_rsi_parameters(data, ema_short, ema_medium, ema_long,
                     sl_stop=sl_pct,
                     tp_stop=tp_pct,
                     init_cash=capital,
-                    freq=detect_timeframe_frequency(data.index)
+                    freq='H'
                 )
 
                 # Get key metrics
@@ -414,7 +413,7 @@ def optimize_volatility_factor(data, ema_short, ema_medium, ema_long,
             sl_stop=sl_pct,
             tp_stop=tp_pct,
             init_cash=capital,
-            freq=detect_timeframe_frequency(data.index)
+            freq='H'
         )
 
         # Get key metrics
@@ -492,7 +491,7 @@ def final_backtest(data, optimal_params, capital):
         sl_stop=sl_pct,
         tp_stop=tp_pct,
         init_cash=capital,
-        freq=detect_timeframe_frequency(data.index)
+        freq='H'
     )
 
     # Get detailed statistics
@@ -506,7 +505,7 @@ def final_backtest(data, optimal_params, capital):
         else:
             print(f"{key}: {value}")
 
-    # THIS IS THE FIXED PART - plot results using matplotlib instead of plotly
+    # Plot results using matplotlib instead of relying on portfolio.equity()
     try:
         fig, axs = plt.subplots(3, 1, figsize=(12, 16), gridspec_kw={"height_ratios": [2, 1, 1]})
 
@@ -533,9 +532,11 @@ def final_backtest(data, optimal_params, capital):
             axs[1].legend()
             axs[1].grid(True)
 
-        # Plot equity curve using matplotlib
-        equity = portfolio.equity()
-        axs[2].plot(equity.index, equity.values, label="Equity Curve")
+        # Plot equity curve using portfolio value instead of equity attribute
+        # This is the fix for the "Portfolio object has no attribute 'equity'" error
+        cum_returns = portfolio.cum_returns()
+        equity_curve = capital * (1 + cum_returns)
+        axs[2].plot(equity_curve.index, equity_curve.values, label="Equity Curve")
         axs[2].set_title("Equity Curve")
         axs[2].legend()
         axs[2].grid(True)

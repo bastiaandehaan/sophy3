@@ -15,60 +15,49 @@ def detect_timeframe_frequency(data):
     Returns:
         str: Pandas frequency string
     """
-    if not isinstance(data, pd.DataFrame):
-        logger.warning("Input is not a DataFrame, defaulting to 1H timeframe")
-        return 'H'
+    # Check if data is DataFrame-like (has an index attribute)
+    has_index = hasattr(data, 'index')
 
-    if not hasattr(data, 'index') or not hasattr(data.index, 'inferred_freq'):
+    if not has_index:
         logger.warning(
-            "DataFrame doesn't have a proper datetime index, defaulting to 1H timeframe")
+            "Input is not a DataFrame-like object, defaulting to 1H timeframe")
         return 'H'
 
     # Try to infer frequency from the index
-    freq = pd.infer_freq(data.index)
+    try:
+        freq = pd.infer_freq(data.index)
+        if freq is not None:
+            return freq
 
-    if freq is None:
         # If freq couldn't be inferred, try to calculate from consecutive timestamps
-        try:
-            if len(data.index) >= 2:
-                # Calculate time difference between first few rows
-                time_diffs = []
-                for i in range(min(5, len(data.index) - 1)):
-                    diff = data.index[i + 1] - data.index[i]
-                    time_diffs.append(diff.total_seconds())
+        if len(data.index) >= 2:
+            # Calculate time difference between first few rows
+            time_diffs = []
+            for i in range(min(5, len(data.index) - 1)):
+                diff = data.index[i + 1] - data.index[i]
+                time_diffs.append(diff.total_seconds())
 
-                # Use the most common difference
+            # Use the most common difference
+            if time_diffs:
                 most_common_diff = max(set(time_diffs), key=time_diffs.count)
 
-                # Convert seconds to appropriate frequency string
-                seconds = most_common_diff
-                if seconds == 60:
-                    return 'min'
-                elif seconds == 300:
-                    return '5min'
-                elif seconds == 900:
-                    return '15min'
-                elif seconds == 1800:
-                    return '30min'
-                elif seconds == 3600:
-                    return 'H'
-                elif seconds == 14400:
-                    return '4H'
-                elif seconds == 86400:
-                    return 'D'
-                elif seconds == 604800:
-                    return 'W'
-                elif seconds >= 2592000 and seconds <= 2678400:  # ~30 days
-                    return 'M'
+                # Map seconds to frequency string
+                seconds_to_freq = {60: 'min',  # 1 minute
+                    300: '5min',  # 5 minutes
+                    900: '15min',  # 15 minutes
+                    1800: '30min',  # 30 minutes
+                    3600: 'H',  # 1 hour
+                    14400: '4H',  # 4 hours
+                    86400: 'D',  # 1 day
+                    604800: 'W',  # 1 week
+                }
 
-            logger.warning(
-                "Couldn't determine timeframe from index differences, defaulting to 1H")
-            return 'H'
-        except Exception as e:
-            logger.error(f"Error detecting timeframe: {e}")
-            return 'H'
+                return seconds_to_freq.get(most_common_diff, 'H')
+    except Exception as e:
+        logger.error(f"Error detecting timeframe: {e}")
 
-    return freq
+    logger.warning("Couldn't determine timeframe from index, defaulting to 1H")
+    return 'H'
 
 
 def parse_timeframe(timeframe_str):
@@ -82,7 +71,6 @@ def parse_timeframe(timeframe_str):
         str: Pandas frequency string
     """
     # If timeframe_str is a DataFrame, extract the actual timeframe from it
-    # This likely happens when data is passed directly instead of a timeframe string
     if isinstance(timeframe_str, pd.DataFrame):
         # Try to detect the timeframe from the DataFrame's index
         return detect_timeframe_frequency(timeframe_str)
@@ -97,12 +85,13 @@ def parse_timeframe(timeframe_str):
 
     # Common timeframe mappings
     timeframe_map = {'M1': 'min', '1M': 'min', 'MIN': 'min', 'MINUTE': 'min',
-                     '1MIN': 'min', 'M5': '5min', '5M': '5min', '5MIN': '5min', 'M15': '15min',
-                     '15M': '15min', '15MIN': '15min', 'M30': '30min', '30M': '30min',
-                     '30MIN': '30min', 'H1': 'H', '1H': 'H', 'HOUR': 'H', 'HOURLY': 'H', 'H4': '4H',
-                     '4H': '4H', '4HOUR': '4H', 'D': 'D', 'D1': 'D', '1D': 'D', 'DAY': 'D',
-                     'DAILY': 'D', 'W': 'W', 'W1': 'W', '1W': 'W', 'WEEK': 'W', 'WEEKLY': 'W',
-                     'MO': 'M', 'M': 'M', 'MN': 'M', 'MN1': 'M', '1MO': 'M', 'MONTH': 'M',
+                     '1MIN': 'min', 'M5': '5min', '5M': '5min', '5MIN': '5min',
+                     'M15': '15min', '15M': '15min', '15MIN': '15min', 'M30': '30min',
+                     '30M': '30min', '30MIN': '30min', 'H1': 'H', '1H': 'H',
+                     'HOUR': 'H', 'HOURLY': 'H', 'H4': '4H', '4H': '4H', '4HOUR': '4H',
+                     'D': 'D', 'D1': 'D', '1D': 'D', 'DAY': 'D', 'DAILY': 'D', 'W': 'W',
+                     'W1': 'W', '1W': 'W', 'WEEK': 'W', 'WEEKLY': 'W', 'MO': 'M',
+                     'M': 'M', 'MN': 'M', 'MN1': 'M', '1MO': 'M', 'MONTH': 'M',
                      'MONTHLY': 'M'}
 
     # Check if the input matches a known timeframe
@@ -170,9 +159,10 @@ def convert_timeframe_to_mt5(timeframe):
         # Map pandas frequencies to MT5 timeframe constants
         mt5_map = {'min': mt5.TIMEFRAME_M1, '1min': mt5.TIMEFRAME_M1,
                    '5min': mt5.TIMEFRAME_M5, '15min': mt5.TIMEFRAME_M15,
-                   '30min': mt5.TIMEFRAME_M30, 'H': mt5.TIMEFRAME_H1, '1H': mt5.TIMEFRAME_H1,
-                   '4H': mt5.TIMEFRAME_H4, 'D': mt5.TIMEFRAME_D1, '1D': mt5.TIMEFRAME_D1,
-                   'W': mt5.TIMEFRAME_W1, '1W': mt5.TIMEFRAME_W1, 'M': mt5.TIMEFRAME_MN1,
+                   '30min': mt5.TIMEFRAME_M30, 'H': mt5.TIMEFRAME_H1,
+                   '1H': mt5.TIMEFRAME_H1, '4H': mt5.TIMEFRAME_H4,
+                   'D': mt5.TIMEFRAME_D1, '1D': mt5.TIMEFRAME_D1, 'W': mt5.TIMEFRAME_W1,
+                   '1W': mt5.TIMEFRAME_W1, 'M': mt5.TIMEFRAME_MN1,
                    '1M': mt5.TIMEFRAME_MN1}
 
         if tf in mt5_map:
